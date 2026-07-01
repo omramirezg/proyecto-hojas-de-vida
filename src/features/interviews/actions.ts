@@ -10,6 +10,8 @@ import {
   updateInterviewSchema,
   hiringDecisionSchema,
 } from './schemas';
+import { sendEmail } from '@/lib/email';
+import { composeInterviewEmail } from './email-template';
 import * as repo from './repository';
 
 function str(formData: FormData, key: string): string {
@@ -104,6 +106,66 @@ export async function updateInterviewAction(
     revalidatePath(processPath(companyId, applicationId));
     return { ok: true, message: 'Entrevista actualizada.' };
   } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// ── Enviar la entrevista por correo al candidato ────────────────
+export async function sendInterviewEmailAction(
+  companyId: string,
+  applicationId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const { user } = await requireSession();
+    await requirePermission(companyId, 'candidate:manage');
+
+    const interviewId = str(formData, 'interviewId');
+    const interview = await repo.getInterviewForEmail(companyId, interviewId);
+    if (!interview) return { ok: false, message: 'No se encontró la entrevista.' };
+
+    const email = interview.application.candidate.email;
+    if (!email) {
+      return {
+        ok: false,
+        message: 'El candidato no tiene correo. Edítalo para agregarlo antes de enviar.',
+      };
+    }
+
+    const { subject, html } = composeInterviewEmail({
+      candidateName: interview.application.candidate.fullName,
+      jobTitle: interview.application.job.title,
+      companyName: interview.application.job.company.name,
+      scheduledAt: interview.scheduledAt,
+      mode: interview.mode,
+      location: interview.location,
+      notes: interview.notes,
+    });
+
+    await sendEmail({ to: email, subject, html });
+
+    await recordAudit({
+      action: 'interview.email_sent',
+      actorId: user.id,
+      companyId,
+      entityType: 'Interview',
+      entityId: interview.id,
+      metadata: { to: email },
+    });
+
+    revalidatePath(`/empresas/${companyId}/postulaciones/${applicationId}`);
+    return { ok: true, message: `Correo enviado a ${email}.` };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('EMAIL_NOT_CONFIGURED'))
+      return { ok: false, message: 'El correo no está configurado (falta RESEND_API_KEY).' };
+    if (msg.includes('EMAIL_SEND_FAILED'))
+      return {
+        ok: false,
+        message:
+          'No se pudo enviar. Sin dominio verificado, Resend solo entrega a tu propio correo de la cuenta.',
+      };
     return toActionError(error);
   }
 }

@@ -87,6 +87,21 @@ export async function decideHiring(params: {
   });
 }
 
+/** Datos de una entrevista para componer el correo de citación. */
+export async function getInterviewForEmail(companyId: string, interviewId: string) {
+  return db.interview.findFirst({
+    where: { id: interviewId, companyId },
+    include: {
+      application: {
+        include: {
+          candidate: { select: { fullName: true, email: true } },
+          job: { select: { title: true, company: { select: { name: true } } } },
+        },
+      },
+    },
+  });
+}
+
 /** Verifica que la postulación pertenezca a la empresa (para acciones por interviewId). */
 export async function applicationBelongsToCompany(
   companyId: string,

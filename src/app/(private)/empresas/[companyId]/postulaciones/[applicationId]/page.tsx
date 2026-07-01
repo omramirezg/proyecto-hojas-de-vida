@@ -14,6 +14,8 @@ import {
 import { ScheduleInterviewForm } from '@/features/interviews/components/schedule-interview-form';
 import { InterviewStatusForm } from '@/features/interviews/components/interview-status-form';
 import { HiringDecisionForm } from '@/features/interviews/components/hiring-decision-form';
+import { SendEmailButton } from '@/features/interviews/components/send-email-button';
+import { sendInterviewEmailAction } from '@/features/interviews/actions';
 import {
   INTERVIEW_MODE_LABELS,
   INTERVIEW_STATUS_LABELS,
@@ -54,6 +56,7 @@ export default async function ProcessPage({
   const scheduleAction = scheduleInterviewAction.bind(null, companyId, applicationId);
   const updateAction = updateInterviewAction.bind(null, companyId, applicationId);
   const decideAction = decideHiringAction.bind(null, companyId, applicationId);
+  const emailAction = sendInterviewEmailAction.bind(null, companyId, applicationId);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -177,6 +180,9 @@ export default async function ProcessPage({
                       <MapPin className="size-3.5" /> {iv.location}
                     </p>
                   ) : null}
+                  <div className="mt-2">
+                    <SendEmailButton action={emailAction} interviewId={iv.id} />
+                  </div>
                   <InterviewStatusForm
                     action={updateAction}
                     interviewId={iv.id}
