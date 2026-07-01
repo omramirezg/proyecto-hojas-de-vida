@@ -18,8 +18,8 @@ try {
   const n = await db.company.count();
   console.log('OK: conexión a la base de datos (pooled 6543). Empresas:', n);
 } catch (e) {
-  console.error('ERROR pooled code:', e.code);
-  console.error('ERROR pooled msg:', e.message);
+  console.error('ERROR pooled:', e.message.split('\n')[0]);
+  process.exitCode = 1;
 } finally {
   await db.$disconnect();
 }
