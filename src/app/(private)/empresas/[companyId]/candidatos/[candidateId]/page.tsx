@@ -26,9 +26,15 @@ import { RevealIdentityButton } from '@/features/resumes/components/reveal-ident
 import { ComputeIacButton } from '@/features/iac/components/compute-iac-button';
 import { computeIacAction } from '@/features/iac/actions';
 import { IAC_CATEGORY_LABELS, IAC_CATEGORY_BADGE } from '@/features/iac/constants';
-import { listCandidateResults, listEvaluations } from '@/features/evaluations/repository';
-import { recordResultAction } from '@/features/evaluations/actions';
+import {
+  listCandidateResults,
+  listEvaluations,
+  listGeneratedEvaluations,
+  listAssignmentsForCandidate,
+} from '@/features/evaluations/repository';
+import { recordResultAction, assignEvaluationToCandidateAction } from '@/features/evaluations/actions';
 import { RecordResultForm } from '@/features/evaluations/components/record-result-form';
+import { AssignTestPanel } from '@/features/evaluations/components/assign-test-panel';
 import { EVALUATION_TYPE_LABELS } from '@/features/evaluations/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -84,10 +90,13 @@ export default async function CandidateDetailPage({
   const availableJobs = allJobs.filter((j) => !appliedJobIds.has(j.id));
 
   const canGrade = hasPermission(membership.role, 'evaluation:grade');
-  const [evalResults, evalCatalog] = await Promise.all([
+  const [evalResults, evalCatalog, generatedEvals, assignments] = await Promise.all([
     listCandidateResults(companyId, candidateId),
     canGrade ? listEvaluations(companyId) : Promise.resolve([]),
+    canGrade ? listGeneratedEvaluations(companyId) : Promise.resolve([]),
+    canGrade ? listAssignmentsForCandidate(companyId, candidateId) : Promise.resolve([]),
   ]);
+  const assignAction = assignEvaluationToCandidateAction.bind(null, companyId, candidateId);
 
   const uploadAction = uploadResumeAction.bind(null, companyId, candidateId);
   const applyAction = applyToJobAction.bind(null, companyId);
@@ -324,18 +333,43 @@ export default async function CandidateDetailPage({
           )}
 
           {canGrade ? (
-            <div>
-              <p className="mb-2 text-sm font-medium">Registrar resultado</p>
-              <RecordResultForm
-                action={recordAction}
-                evaluations={evalCatalog.map((e) => ({
-                  id: e.id,
-                  title: e.title,
-                  type: e.type,
-                  maxScore: e.maxScore,
-                }))}
-              />
-            </div>
+            <>
+              <div>
+                <p className="mb-1 text-sm font-medium">Prueba en línea (IA)</p>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Asigna una prueba generada con IA y envía el enlace al candidato. Se califica sola
+                  y alimenta el IAC.
+                </p>
+                <AssignTestPanel
+                  action={assignAction}
+                  evaluations={generatedEvals.map((e) => ({
+                    id: e.id,
+                    title: e.title,
+                    type: e.type,
+                  }))}
+                  assignments={assignments.map((a) => ({
+                    id: a.id,
+                    token: a.token,
+                    status: a.status,
+                    evaluationTitle: a.evaluation.title,
+                    evaluationType: a.evaluation.type,
+                  }))}
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <p className="mb-2 text-sm font-medium">Registrar resultado manual</p>
+                <RecordResultForm
+                  action={recordAction}
+                  evaluations={evalCatalog.map((e) => ({
+                    id: e.id,
+                    title: e.title,
+                    type: e.type,
+                    maxScore: e.maxScore,
+                  }))}
+                />
+              </div>
+            </>
           ) : null}
         </CardContent>
       </Card>

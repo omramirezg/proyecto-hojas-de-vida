@@ -1,5 +1,6 @@
 'use server';
 
+import { randomBytes } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireSession } from '@/lib/auth';
@@ -7,11 +8,22 @@ import { requirePermission } from '@/server/guards';
 import { recordAudit } from '@/features/audit/service';
 import { type ActionState, toActionError } from '@/lib/action-state';
 import { evaluationCreateSchema, assignEvaluationSchema, recordResultSchema } from './schemas';
+import { generateEvaluationForJob, submitEvaluationByToken } from './generate-service';
 import * as repo from './repository';
+import type { EvaluationType } from '@prisma/client';
 
 function str(formData: FormData, key: string): string {
   const v = formData.get(key);
   return typeof v === 'string' ? v : '';
+}
+
+function aiErrorMessage(error: unknown): string {
+  const msg = error instanceof Error ? error.message : '';
+  if (msg.includes('AI_NOT_CONFIGURED'))
+    return 'La IA no está configurada (falta OPENAI_API_KEY).';
+  if (msg.includes('JOB_NOT_FOUND')) return 'No se encontró la vacante.';
+  if (msg.startsWith('AI_')) return 'La IA no pudo generar la prueba. Inténtalo de nuevo.';
+  return 'No se pudo generar la prueba.';
 }
 
 // ── Crear evaluación ────────────────────────────────────────────
@@ -174,5 +186,92 @@ export async function recordResultAction(
     };
   } catch (error) {
     return toActionError(error);
+  }
+}
+
+// ── Generar prueba con IA para una vacante ──────────────────────
+export async function generateJobEvaluationAction(
+  companyId: string,
+  jobId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const { user } = await requireSession();
+    await requirePermission(companyId, 'evaluation:grade');
+
+    const type: EvaluationType = str(formData, 'type') === 'SOFT' ? 'SOFT' : 'TECHNICAL';
+    await generateEvaluationForJob(companyId, jobId, type, user.id);
+
+    revalidatePath(`/empresas/${companyId}/vacantes/${jobId}/evaluaciones`);
+    return { ok: true, message: 'Prueba generada con IA y asignada a la vacante.' };
+  } catch (error) {
+    const auth =
+      error instanceof Error &&
+      ['UNAUTHENTICATED', 'FORBIDDEN', 'NOT_A_MEMBER'].includes(error.message);
+    return auth ? toActionError(error) : { ok: false, message: aiErrorMessage(error) };
+  }
+}
+
+// ── Asignar una prueba a un candidato (genera enlace) ───────────
+export async function assignEvaluationToCandidateAction(
+  companyId: string,
+  candidateId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const { user } = await requireSession();
+    await requirePermission(companyId, 'evaluation:grade');
+
+    const evaluationId = str(formData, 'evaluationId');
+    if (!evaluationId) return { ok: false, message: 'Selecciona una prueba.' };
+
+    const evaluation = await repo.getEvaluation(companyId, evaluationId);
+    if (!evaluation) return { ok: false, message: 'La prueba no existe en esta empresa.' };
+
+    const token = randomBytes(24).toString('hex');
+    await repo.createAssignment({ companyId, evaluationId, candidateId, token });
+
+    await recordAudit({
+      action: 'evaluation.assigned_to_candidate',
+      actorId: user.id,
+      companyId,
+      entityType: 'EvaluationAssignment',
+      metadata: { candidateId, evaluationId },
+    });
+
+    revalidatePath(`/empresas/${companyId}/candidatos/${candidateId}`);
+    return { ok: true, message: 'Enlace de prueba generado. Cópialo y envíalo al candidato.' };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+// ── Enviar respuestas de la prueba (PÚBLICO, sin login) ─────────
+export async function submitEvaluationAction(
+  token: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    // Reconstruye las respuestas: answer_0, answer_1, ...
+    const answers: number[] = [];
+    for (let i = 0; formData.has(`answer_${i}`); i += 1) {
+      answers[i] = Number(str(formData, `answer_${i}`));
+    }
+
+    const result = await submitEvaluationByToken(token, answers);
+    return {
+      ok: true,
+      message: `¡Gracias! Respondiste ${result.correct} de ${result.total} (${result.normalizedScore}/100).`,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('ALREADY_COMPLETED'))
+      return { ok: false, message: 'Esta prueba ya fue respondida.' };
+    if (msg.includes('ASSIGNMENT_NOT_FOUND') || msg.includes('NO_QUESTIONS'))
+      return { ok: false, message: 'El enlace no es válido.' };
+    return { ok: false, message: 'No se pudo enviar la prueba.' };
   }
 }

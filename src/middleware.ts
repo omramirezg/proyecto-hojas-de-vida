@@ -15,6 +15,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   '/api/webhooks(.*)',
   '/api/health',
+  '/evaluacion(.*)', // pruebas que responde el candidato sin iniciar sesión
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

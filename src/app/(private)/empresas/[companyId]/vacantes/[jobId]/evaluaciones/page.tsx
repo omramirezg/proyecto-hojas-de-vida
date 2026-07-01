@@ -6,9 +6,14 @@ import { getSession } from '@/lib/auth';
 import { hasPermission } from '@/lib/roles';
 import { getJob } from '@/features/jobs/repository';
 import { listEvaluations, listJobEvaluations } from '@/features/evaluations/repository';
-import { assignEvaluationAction, unassignEvaluationAction } from '@/features/evaluations/actions';
+import {
+  assignEvaluationAction,
+  unassignEvaluationAction,
+  generateJobEvaluationAction,
+} from '@/features/evaluations/actions';
 import { AssignEvaluationForm } from '@/features/evaluations/components/assign-evaluation-form';
 import { UnassignEvaluationButton } from '@/features/evaluations/components/unassign-evaluation-button';
+import { GenerateEvaluationForm } from '@/features/evaluations/components/generate-evaluation-form';
 import { EVALUATION_TYPE_LABELS, EVALUATION_TYPE_BADGE } from '@/features/evaluations/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +52,7 @@ export default async function JobEvaluationsPage({
 
   const assignAction = assignEvaluationAction.bind(null, companyId);
   const unassignAction = unassignEvaluationAction.bind(null, companyId);
+  const generateAction = generateJobEvaluationAction.bind(null, companyId, jobId);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -61,6 +67,20 @@ export default async function JobEvaluationsPage({
         <h1 className="text-2xl font-bold tracking-tight">Evaluaciones de la vacante</h1>
         <p className="text-sm text-muted-foreground">{job.title}</p>
       </div>
+
+      {/* Generar prueba con IA */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Generar prueba con IA</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Crea una prueba de opción múltiple alineada al análisis de este cargo. Podrás enviarla a
+            los candidatos para que la respondan en línea y se califique sola.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <GenerateEvaluationForm action={generateAction} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
