@@ -1,0 +1,647 @@
+// Plataforma SaaS de reclutamiento con IA — Esquema Prisma
+// Fase 1: núcleo de identidad y multi-tenant (User, Company, CompanyMember, Invitation, AuditLog).
+// Las entidades de Vacantes, Candidatos, IAC, Evaluaciones, etc. se agregan en fases posteriores.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+/// Rol de un usuario DENTRO de una empresa (multi-tenant).
+/// SUPERADMIN es global (gestión de la plataforma SaaS) y se marca aparte en User.isPlatformAdmin.
+enum CompanyRole {
+  COMPANY_ADMIN
+  RECRUITER
+  EVALUATOR
+  CANDIDATE
+}
+
+enum MemberStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum CompanySize {
+  MICRO // 1-10
+  SMALL // 11-50
+  MEDIUM // 51-200
+  LARGE // 200+
+}
+
+enum JobStatus {
+  DRAFT // borrador, no visible en procesos
+  PUBLISHED // publicada internamente, recibe candidatos
+  CLOSED // cerrada, ya no recibe candidatos
+  ARCHIVED // archivada
+}
+
+enum WorkMode {
+  REMOTE
+  HYBRID
+  ONSITE
+}
+
+/// Dimensiones evaluables del Índice de Ajuste al Cargo (IAC).
+/// Los pesos por vacante (JobCriteria.weight) deben sumar 100.
+enum CriteriaDimension {
+  TECHNICAL_SKILLS
+  EXPERIENCE
+  EDUCATION
+  LANGUAGES
+  CERTIFICATIONS
+  LOCATION
+  SOFT_SKILLS
+  EVALUATIONS
+}
+
+enum CandidateSource {
+  MANUAL
+  UPLOAD
+  LINKEDIN
+  OTHER
+}
+
+/// Estado de un candidato dentro del proceso de una vacante.
+enum ApplicationStatus {
+  APPLIED
+  SCREENING
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+/// Estado de procesamiento del archivo de CV (la extracción ocurre en la Fase 5).
+enum ResumeStatus {
+  UPLOADED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+/// Categoría del Índice de Ajuste al Cargo según el puntaje (0-100).
+enum IACCategory {
+  EXCELLENT // 90-100
+  GOOD // 75-89
+  PARTIAL // 60-74
+  NOT_RECOMMENDED // 0-59
+}
+
+enum EvaluationType {
+  TECHNICAL
+  SOFT
+}
+
+enum InterviewMode {
+  REMOTE
+  ONSITE
+  PHONE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+enum HiringOutcome {
+  SELECTED
+  REJECTED
+}
+
+// ─────────────────────────────────────────────────────────────
+// User — espejo local del usuario de Clerk
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id        String  @id @default(cuid())
+  /// ID del usuario en Clerk (fuente de verdad de la autenticación).
+  clerkId   String  @unique
+  email     String  @unique
+  firstName String?
+  lastName  String?
+  imageUrl  String?
+
+  /// Superadmin global de la plataforma (no atado a una empresa).
+  isPlatformAdmin Boolean @default(false)
+
+  memberships CompanyMember[]
+  auditLogs   AuditLog[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([email])
+  @@index([deletedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Company — tenant raíz
+// ─────────────────────────────────────────────────────────────
+
+model Company {
+  id     String  @id @default(cuid())
+  name   String
+  /// slug único legible para URLs (p. ej. /empresas/mi-startup).
+  slug   String  @unique
+  sector String?
+  size   CompanySize?
+  /// Código ISO de país (CO, MX, AR, ...).
+  country String?
+  logoUrl String?
+  website String?
+
+  members     CompanyMember[]
+  invitations Invitation[]
+  jobs        Job[]
+  candidates  Candidate[]
+  evaluations Evaluation[]
+  auditLogs   AuditLog[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([slug])
+  @@index([deletedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// CompanyMember — relación usuario ↔ empresa con rol (tabla pivote enriquecida)
+// ─────────────────────────────────────────────────────────────
+
+model CompanyMember {
+  id        String       @id @default(cuid())
+  userId    String
+  companyId String
+  role      CompanyRole  @default(RECRUITER)
+  status    MemberStatus @default(ACTIVE)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  /// Un usuario sólo puede pertenecer una vez a la misma empresa.
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
+  @@index([companyId, role])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Invitation — invitar miembros a una empresa
+// ─────────────────────────────────────────────────────────────
+
+model Invitation {
+  id        String           @id @default(cuid())
+  companyId String
+  email     String
+  role      CompanyRole      @default(RECRUITER)
+  status    InvitationStatus @default(PENDING)
+  /// Token aleatorio para aceptar la invitación vía enlace.
+  token     String           @unique
+  invitedById String?
+  expiresAt DateTime
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  acceptedAt DateTime?
+
+  @@unique([companyId, email, status])
+  @@index([companyId])
+  @@index([token])
+}
+
+// ─────────────────────────────────────────────────────────────
+// AuditLog — registro de acciones sensibles (desde el día 1)
+// ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String  @id @default(cuid())
+  /// Empresa en cuyo contexto ocurrió la acción (null para acciones de plataforma).
+  companyId String?
+  /// Usuario que ejecutó la acción (null para acciones del sistema).
+  actorId   String?
+  /// Verbo de la acción, p. ej. "company.created", "member.invited", "candidate.identity_revealed".
+  action    String
+  /// Tipo de entidad afectada, p. ej. "Company", "CompanyMember".
+  entityType String?
+  /// ID de la entidad afectada.
+  entityId   String?
+  /// Metadatos adicionales en JSON (cambios, contexto).
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  actor   User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Job — vacante + análisis del cargo
+// ─────────────────────────────────────────────────────────────
+
+model Job {
+  id        String    @id @default(cuid())
+  companyId String
+  title     String
+  status    JobStatus @default(DRAFT)
+
+  // Análisis del cargo
+  objective        String? // objetivo del cargo
+  functions        String[] // funciones
+  responsibilities String[] // responsabilidades
+  education        String? // formación requerida
+  experience       String? // descripción de la experiencia requerida
+  experienceYears  Int? // años mínimos de experiencia
+  technicalSkills  String[] // habilidades técnicas
+  softSkills       String[] // habilidades blandas
+  languages        String[] // idiomas requeridos (p. ej. "Inglés - B2")
+  certifications   String[] // certificaciones deseadas
+
+  location       String?
+  workMode       WorkMode?
+  salaryMin      Int?
+  salaryMax      Int?
+  salaryCurrency String? // ISO 4217 (USD, COP, MXN, ...)
+
+  company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  criteria        JobCriteria[]
+  applications    CandidateApplication[]
+  evaluationLinks JobEvaluation[]
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([deletedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// JobCriteria — pesos ponderados por dimensión para el IAC
+// La suma de weights de una vacante debe ser 100 (validado en la capa de servicio).
+// ─────────────────────────────────────────────────────────────
+
+model JobCriteria {
+  id        String            @id @default(cuid())
+  jobId     String
+  dimension CriteriaDimension
+  weight    Int // porcentaje 0-100
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobId, dimension])
+  @@index([jobId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Candidate — persona candidata (por empresa)
+// Nota: los datos sesgantes extraídos del CV se separan en la Fase 5
+// (HiddenCandidateData). Aquí va la identidad que captura el reclutador.
+// ─────────────────────────────────────────────────────────────
+
+model Candidate {
+  id        String          @id @default(cuid())
+  companyId String
+  fullName  String
+  email     String?
+  phone     String?
+  source    CandidateSource @default(MANUAL)
+  notes     String?
+
+  company            Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  applications       CandidateApplication[]
+  resumeFiles        ResumeFile[]
+  standardizedResume StandardizedResume?
+  hiddenData         HiddenCandidateData?
+  evaluationResults  EvaluationResult[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([companyId])
+  @@index([companyId, email])
+  @@index([deletedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// CandidateApplication — candidato ↔ vacante con estado del proceso
+// ─────────────────────────────────────────────────────────────
+
+model CandidateApplication {
+  id          String            @id @default(cuid())
+  companyId   String // tenant denormalizado para filtrado/seguridad
+  candidateId String
+  jobId       String
+  status      ApplicationStatus @default(APPLIED)
+  notes       String?
+
+  candidate      Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job            Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  iacScore       IACScore?
+  interviews     Interview[]
+  hiringDecision HiringDecision?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([candidateId, jobId])
+  @@index([companyId])
+  @@index([jobId, status])
+  @@index([candidateId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// ResumeFile — archivo de CV almacenado en Supabase Storage
+// ─────────────────────────────────────────────────────────────
+
+model ResumeFile {
+  id          String       @id @default(cuid())
+  companyId   String
+  candidateId String
+  fileName    String // nombre original
+  storagePath String // ruta dentro del bucket (privado)
+  mimeType    String
+  sizeBytes   Int
+  status      ResumeStatus @default(UPLOADED)
+  /// Texto extraído (se llena en la Fase 5).
+  extractedText String?
+  errorMessage  String?
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([candidateId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// StandardizedResume — CV estandarizado, datos VISIBLES (no sesgantes)
+// Es lo que se muestra en etapas de reclutamiento ciego y alimenta el IAC.
+// ─────────────────────────────────────────────────────────────
+
+model StandardizedResume {
+  id           String  @id @default(cuid())
+  companyId    String
+  candidateId  String  @unique
+  resumeFileId String?
+
+  summary         String?
+  yearsExperience Int?
+  technicalSkills String[]
+  softSkills      String[]
+  languages       Json? // [{ language, level }]
+  certifications  String[]
+  educationLevel  String?
+  degrees         String[]
+  positions       Json? // [{ title, org?, years? }]
+  locationCity    String?
+  locationCountry String?
+  /// Payload estructurado completo devuelto por la IA (auditoría/depuración).
+  raw             Json?
+  /// Proveedor/método usado (openai, heuristic).
+  parserName      String?
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// IACScore — resultado del Índice de Ajuste al Cargo por postulación
+// Cálculo determinista (no IA). Auditable: guarda el desglose por dimensión.
+// ─────────────────────────────────────────────────────────────
+
+model IACScore {
+  id            String      @id @default(cuid())
+  companyId     String
+  applicationId String      @unique
+  candidateId   String
+  jobId         String
+  overall       Int // 0-100
+  category      IACCategory
+  explanation   String
+  strengths     String[]
+  weaknesses    String[]
+  risks         String[]
+  /// Identificador del algoritmo/versión para reproducibilidad.
+  engineVersion String?
+
+  application CandidateApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  details     IACScoreDetail[]
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([jobId, overall])
+}
+
+// ─────────────────────────────────────────────────────────────
+// IACScoreDetail — desglose por dimensión (transparencia/auditoría)
+// ─────────────────────────────────────────────────────────────
+
+model IACScoreDetail {
+  id        String            @id @default(cuid())
+  scoreId   String
+  dimension CriteriaDimension
+  weight    Int // peso de la dimensión (0-100)
+  rawScore  Int // puntaje de la dimensión (0-100)
+  applicable Boolean // si la dimensión se pudo evaluar
+  note      String?
+
+  score IACScore @relation(fields: [scoreId], references: [id], onDelete: Cascade)
+
+  @@index([scoreId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// HiddenCandidateData — datos SESGANTES, separados y de acceso restringido
+// Solo accesible con permiso candidate:reveal y siempre auditando el acceso.
+// NUNCA debe enviarse al cliente en etapas ciegas ni al prompt del IAC.
+// ─────────────────────────────────────────────────────────────
+
+model HiddenCandidateData {
+  id           String  @id @default(cuid())
+  companyId    String
+  candidateId  String  @unique
+  resumeFileId String?
+
+  fullName        String?
+  hasPhoto        Boolean @default(false)
+  age             Int?
+  gender          String?
+  institutions    String[] // universidades / colegios
+  specificAddress String?
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Evaluation — prueba técnica o blanda (catálogo por empresa)
+// ─────────────────────────────────────────────────────────────
+
+model Evaluation {
+  id          String         @id @default(cuid())
+  companyId   String
+  title       String
+  type        EvaluationType
+  description String?
+  maxScore    Int            @default(100)
+
+  company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobLinks JobEvaluation[]
+  results  EvaluationResult[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([companyId])
+  @@index([deletedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// JobEvaluation — asignación de una evaluación a una vacante
+// ─────────────────────────────────────────────────────────────
+
+model JobEvaluation {
+  id           String @id @default(cuid())
+  companyId    String
+  jobId        String
+  evaluationId String
+
+  job        Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([jobId, evaluationId])
+  @@index([companyId])
+  @@index([jobId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// EvaluationResult — resultado de una evaluación para un candidato
+// normalizedScore (0-100) alimenta la dimensión EVALUATIONS del IAC.
+// ─────────────────────────────────────────────────────────────
+
+model EvaluationResult {
+  id              String  @id @default(cuid())
+  companyId       String
+  evaluationId    String
+  candidateId     String
+  applicationId   String?
+  score           Float
+  maxScore        Int // snapshot del máximo al momento de registrar
+  normalizedScore Int // 0-100
+  notes           String?
+  evaluatedById   String?
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  candidate  Candidate  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([candidateId])
+  @@index([evaluationId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Interview — entrevista programada para una postulación
+// ─────────────────────────────────────────────────────────────
+
+model Interview {
+  id            String          @id @default(cuid())
+  companyId     String
+  applicationId String
+  scheduledAt   DateTime
+  mode          InterviewMode
+  status        InterviewStatus @default(SCHEDULED)
+  /// Lugar físico o enlace de videollamada.
+  location      String?
+  notes         String? // observaciones del entrevistador
+  interviewerId String?
+
+  application CandidateApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([applicationId])
+  @@index([scheduledAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// HiringDecision — decisión final por postulación (seleccionado / descartado)
+// ─────────────────────────────────────────────────────────────
+
+model HiringDecision {
+  id            String        @id @default(cuid())
+  companyId     String
+  applicationId String        @unique
+  decision      HiringOutcome
+  reason        String?
+  decidedById   String?
+
+  application CandidateApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  decidedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
