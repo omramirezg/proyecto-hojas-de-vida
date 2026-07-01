@@ -210,6 +210,8 @@ export async function changeApplicationStatusAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  // Si el nuevo estado es "Entrevista", llevamos al usuario a programarla.
+  let goToSchedule: string | null = null;
   try {
     const { user } = await requireSession();
     await requirePermission(companyId, 'candidate:manage');
@@ -232,8 +234,14 @@ export async function changeApplicationStatusAction(
     });
 
     revalidatePath(`/empresas/${companyId}/candidatos/${candidateId}`);
-    return { ok: true, message: 'Estado actualizado.' };
+    if (parsed.data.status === 'INTERVIEW') {
+      goToSchedule = `/empresas/${companyId}/postulaciones/${parsed.data.applicationId}`;
+    }
   } catch (error) {
     return toActionError(error);
   }
+
+  // redirect() debe ir FUERA del try/catch (lanza NEXT_REDIRECT a propósito).
+  if (goToSchedule) redirect(goToSchedule);
+  return { ok: true, message: 'Estado actualizado.' };
 }

@@ -49,6 +49,7 @@ export default async function ProcessPage({
   if (!app) notFound();
 
   const evaluationAvg = await getCandidateEvaluationAverage(companyId, app.candidate.id);
+  const isClosed = ['REJECTED', 'HIRED', 'WITHDRAWN'].includes(app.status);
 
   const scheduleAction = scheduleInterviewAction.bind(null, companyId, applicationId);
   const updateAction = updateInterviewAction.bind(null, companyId, applicationId);
@@ -189,10 +190,17 @@ export default async function ProcessPage({
             <p className="text-sm text-muted-foreground">Aún no hay entrevistas programadas.</p>
           )}
 
-          <div className="border-t pt-5">
-            <p className="mb-3 text-sm font-medium">Programar nueva entrevista</p>
-            <ScheduleInterviewForm action={scheduleAction} />
-          </div>
+          {isClosed ? (
+            <p className="rounded-lg border bg-secondary/40 p-3 text-sm text-muted-foreground">
+              Este proceso está cerrado ({APPLICATION_STATUS_LABELS[app.status]}). No se pueden
+              programar más entrevistas. Cambia el estado si necesitas reabrirlo.
+            </p>
+          ) : (
+            <div className="border-t pt-5">
+              <p className="mb-3 text-sm font-medium">Programar nueva entrevista</p>
+              <ScheduleInterviewForm action={scheduleAction} />
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

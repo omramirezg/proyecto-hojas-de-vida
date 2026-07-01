@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { SidebarNav } from '@/components/shared/sidebar-nav';
 import { AppHeader } from '@/components/shared/app-header';
+import { APP_NAME } from '@/lib/brand';
 
 export default async function PrivateLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -19,7 +20,7 @@ export default async function PrivateLayout({ children }: { children: React.Reac
     <div className="flex min-h-screen bg-secondary/40">
       <aside className="hidden w-64 shrink-0 flex-col border-r bg-background md:flex">
         <div className="flex h-16 items-center border-b px-6">
-          <span className="text-lg font-bold tracking-tight text-primary">Angélica</span>
+          <span className="text-lg font-bold tracking-tight text-primary">{APP_NAME}</span>
         </div>
         <SidebarNav companyId={activeMembership?.companyId} />
       </aside>

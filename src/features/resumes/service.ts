@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { db } from '@/lib/db';
 import { downloadResume } from '@/lib/storage';
 import { isStorageConfigured } from '@/lib/supabase';
 import { extractTextFromResume } from '@/lib/cv/extract-text';
@@ -84,4 +85,40 @@ export async function processResume(
     });
     throw error;
   }
+}
+
+export interface BatchProcessSummary {
+  processed: number;
+  failed: number;
+  pendingBefore: number;
+}
+
+/**
+ * Procesa en lote todos los CV pendientes (estado UPLOADED) de la empresa.
+ * Con un límite por ejecución para no exceder el tiempo de función serverless.
+ */
+export async function processPendingResumes(
+  companyId: string,
+  actorId: string,
+  limit = 15,
+): Promise<BatchProcessSummary> {
+  const pending = await db.resumeFile.findMany({
+    where: { companyId, status: 'UPLOADED' },
+    orderBy: { createdAt: 'asc' },
+    take: limit,
+    select: { id: true },
+  });
+
+  let processed = 0;
+  let failed = 0;
+  for (const r of pending) {
+    try {
+      await processResume(companyId, r.id, actorId);
+      processed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  return { processed, failed, pendingBefore: pending.length };
 }

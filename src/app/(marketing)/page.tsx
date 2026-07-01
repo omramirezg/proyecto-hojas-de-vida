@@ -2,12 +2,13 @@ import Link from 'next/link';
 import { SignedIn, SignedOut } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, ShieldCheck, ScanSearch, BarChart3 } from 'lucide-react';
+import { APP_NAME } from '@/lib/brand';
 
 export default function LandingPage() {
   return (
     <main className="flex min-h-screen flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
-        <span className="text-lg font-bold tracking-tight text-primary">Angélica</span>
+        <span className="text-lg font-bold tracking-tight text-primary">{APP_NAME}</span>
         <nav className="flex items-center gap-3">
           <SignedOut>
             <Button asChild variant="ghost" size="sm">

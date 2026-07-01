@@ -43,10 +43,30 @@ export default async function DashboardPage() {
   const metrics = await getCompanyMetrics(companyId);
 
   const kpis = [
-    { label: 'Vacantes activas', value: metrics.activeJobs, icon: Briefcase },
-    { label: 'Candidatos', value: metrics.totalCandidates, icon: Users },
-    { label: 'Entrevistas', value: metrics.interviews, icon: CalendarDays },
-    { label: 'Contrataciones', value: metrics.hired, icon: Trophy },
+    {
+      label: 'Vacantes activas',
+      value: metrics.activeJobs,
+      icon: Briefcase,
+      href: `/empresas/${companyId}/vacantes`,
+    },
+    {
+      label: 'Candidatos',
+      value: metrics.totalCandidates,
+      icon: Users,
+      href: `/empresas/${companyId}/candidatos`,
+    },
+    {
+      label: 'Entrevistas',
+      value: metrics.interviews,
+      icon: CalendarDays,
+      href: `/empresas/${companyId}/candidatos`,
+    },
+    {
+      label: 'Contrataciones',
+      value: metrics.hired,
+      icon: Trophy,
+      href: `/empresas/${companyId}/candidatos`,
+    },
   ];
 
   return (
@@ -62,17 +82,19 @@ export default async function DashboardPage() {
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
           return (
-            <Card key={kpi.label}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {kpi.label}
-                </CardTitle>
-                <Icon className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{kpi.value}</div>
-              </CardContent>
-            </Card>
+            <Link key={kpi.label} href={kpi.href} className="group">
+              <Card className="transition-colors group-hover:border-primary">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {kpi.label}
+                  </CardTitle>
+                  <Icon className="size-4 text-muted-foreground transition-colors group-hover:text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{kpi.value}</div>
+                </CardContent>
+              </Card>
+            </Link>
           );
         })}
       </div>

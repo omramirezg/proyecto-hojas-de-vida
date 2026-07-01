@@ -3,17 +3,17 @@ import { Inter } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { esES } from '@clerk/localizations';
 import { Toaster } from 'sonner';
+import { APP_NAME, APP_TAGLINE, APP_DESCRIPTION } from '@/lib/brand';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
   title: {
-    default: 'Angélica — Reclutamiento con IA',
-    template: '%s · Angélica',
+    default: `${APP_NAME} — ${APP_TAGLINE}`,
+    template: `%s · ${APP_NAME}`,
   },
-  description:
-    'Plataforma de reclutamiento y selección con IA: reclutamiento ciego, Índice de Ajuste al Cargo (IAC) y ranking explicable para empresas de LATAM.',
+  description: APP_DESCRIPTION,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

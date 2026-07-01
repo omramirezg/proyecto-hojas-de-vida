@@ -6,7 +6,7 @@ import { requireSession } from '@/lib/auth';
 import { requirePermission } from '@/server/guards';
 import { recordAudit } from '@/features/audit/service';
 import { type ActionState, toActionError } from '@/lib/action-state';
-import { processResume } from './service';
+import { processResume, processPendingResumes } from './service';
 
 function processErrorMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : '';
@@ -47,6 +47,34 @@ export async function processResumeAction(
     // toActionError cubre errores de autorización; el resto, mensaje específico.
     const auth = error instanceof Error && ['UNAUTHENTICATED', 'FORBIDDEN', 'NOT_A_MEMBER'].includes(error.message);
     return auth ? toActionError(error) : { ok: false, message: processErrorMessage(error) };
+  }
+}
+
+// ── Procesar en lote todos los CV pendientes ────────────────────
+export async function processPendingResumesAction(
+  companyId: string,
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  try {
+    const { user } = await requireSession();
+    await requirePermission(companyId, 'candidate:manage');
+
+    const summary = await processPendingResumes(companyId, user.id);
+
+    revalidatePath(`/empresas/${companyId}/candidatos`);
+    if (summary.pendingBefore === 0) {
+      return { ok: true, message: 'No hay CV pendientes por procesar.' };
+    }
+    return {
+      ok: true,
+      message: `Procesados ${summary.processed} CV${summary.failed > 0 ? `, ${summary.failed} con error` : ''}. Ahora recalcula el ranking de cada vacante.`,
+    };
+  } catch (error) {
+    const auth =
+      error instanceof Error &&
+      ['UNAUTHENTICATED', 'FORBIDDEN', 'NOT_A_MEMBER'].includes(error.message);
+    return auth ? toActionError(error) : { ok: false, message: 'No se pudieron procesar los CV.' };
   }
 }
 

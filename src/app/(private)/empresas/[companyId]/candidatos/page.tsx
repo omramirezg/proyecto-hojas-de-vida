@@ -7,6 +7,8 @@ import { hasPermission } from '@/lib/roles';
 import { listCandidates } from '@/features/candidates/repository';
 import { CANDIDATE_SOURCE_LABELS } from '@/features/candidates/constants';
 import { getInitials } from '@/lib/utils';
+import { processPendingResumesAction } from '@/features/resumes/actions';
+import { ProcessPendingButton } from '@/features/resumes/components/process-pending-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -46,11 +48,14 @@ export default async function CandidatesPage({
           <p className="text-sm text-muted-foreground">Personas candidatas registradas en la empresa.</p>
         </div>
         {canManage ? (
-          <Button asChild>
-            <Link href={`/empresas/${companyId}/candidatos/nuevo`}>
-              <Plus className="size-4" /> Nuevo candidato
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <ProcessPendingButton action={processPendingResumesAction.bind(null, companyId)} />
+            <Button asChild>
+              <Link href={`/empresas/${companyId}/candidatos/nuevo`}>
+                <Plus className="size-4" /> Nuevo candidato
+              </Link>
+            </Button>
+          </div>
         ) : null}
       </div>
 
