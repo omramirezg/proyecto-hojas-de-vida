@@ -35,12 +35,17 @@ export default function LandingPage() {
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
-          <span className="flex items-center gap-2 text-lg font-bold tracking-tight text-primary">
-            <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <Sparkles className="size-4" />
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-2 text-lg font-bold tracking-tight text-primary">
+              <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
+                <Sparkles className="size-4" />
+              </span>
+              {APP_NAME}
             </span>
-            {APP_NAME}
-          </span>
+            <span className="hidden items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary sm:inline-flex">
+              <Sparkles className="size-3.5" /> Reclutamiento con IA para LATAM
+            </span>
+          </div>
           <nav className="flex items-center gap-2">
             <SignedOut>
               <Button asChild variant="ghost" size="sm">
@@ -60,10 +65,7 @@ export default function LandingPage() {
       </header>
 
       {/* Hero */}
-      <section className="mx-auto flex w-full max-w-5xl flex-col items-center px-6 pb-8 pt-16 text-center sm:pt-24">
-        <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
-          <Sparkles className="size-3.5" /> Reclutamiento con IA para LATAM
-        </span>
+      <section className="mx-auto flex w-full max-w-5xl flex-col items-center px-6 pb-8 pt-20 text-center sm:pt-28">
         <h1 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-6xl">
           Contrata mejor, sin sesgos y con decisiones explicables
         </h1>
