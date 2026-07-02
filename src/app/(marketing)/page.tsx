@@ -64,11 +64,8 @@ export default function LandingPage() {
         <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
           <Sparkles className="size-3.5" /> Reclutamiento con IA para LATAM
         </span>
-        <h1 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight sm:text-6xl">
-          Contrata mejor, sin sesgos y con{' '}
-          <span className="bg-gradient-to-r from-primary to-indigo-400 bg-clip-text text-transparent">
-            decisiones explicables
-          </span>
+        <h1 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-6xl">
+          Contrata mejor, sin sesgos y con decisiones explicables
         </h1>
         <p className="mt-6 max-w-2xl text-balance text-lg text-muted-foreground">
           Estandariza hojas de vida, oculta datos sesgantes y calcula el Índice de Ajuste al Cargo
